@@ -26,10 +26,10 @@ struct MathOperation
     double num2;
 };
 
-// NAYA: Specific columns choose karne ke liye struct
+//  Specific columns choosing
 struct SelectConfig
 {
-    bool all = true; // Default saare true
+    bool all = true; // Default all true
     bool id = false;
     bool username = false;
     bool email = false;
@@ -67,7 +67,7 @@ struct Statement
     Row row_to_insert;
     MathOperation math;
     AggregateType agg_type;
-    SelectConfig select_cols; // NAYA: Parser yahan batayega ki kya print karna hai
+    SelectConfig select_cols; // : Parser will tell what to print
 };
 
 // ==========================================
@@ -161,16 +161,16 @@ PrepareResult prepare_statement(std::string input, Statement &statement)
             return PREPARE_SUCCESS;
         }
 
-        // NAYA: Column Projection Logic (Agar Math/Aggregate nahi hai)
+        // NAYA: Column Projection Logic
         statement.type = STATEMENT_SELECT;
         if (input == "select" || input == "select *")
         {
-            statement.select_cols.all = true; // Sab print karo
+            statement.select_cols.all = true; // all print
             return PREPARE_SUCCESS;
         }
 
-        // Agar user ne specific columns mange hain (e.g., "select id email")
-        statement.select_cols.all = false; // All ko band karo
+        //  specific columns asked user (e.g., "select id email")
+        statement.select_cols.all = false; // All closed
         std::stringstream ss(input.substr(6));
         std::string col;
         while (ss >> col)
@@ -182,7 +182,7 @@ PrepareResult prepare_statement(std::string input, Statement &statement)
             else if (col == "email")
                 statement.select_cols.email = true;
             else
-                return PREPARE_SYNTAX_ERROR; // Agar koi aisi column maangi jo hai hi nahi
+                return PREPARE_SYNTAX_ERROR; // column asked which doesn't exist
         }
         return PREPARE_SUCCESS;
     }
@@ -233,7 +233,7 @@ void execute_aggregate(Statement &statement, std::vector<Row> &table)
     }
 }
 
-// NAYA: Executor jo checks ke hisaab se print karega
+//  Executor which  checks and then prints
 ExecuteResult execute_select(Statement &statement, std::vector<Row> &table)
 {
     if (table.empty())
