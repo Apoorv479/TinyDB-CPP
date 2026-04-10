@@ -24,8 +24,14 @@ A lightweight, fully functional Relational Database Engine built entirely from s
    git clone [https://github.com/your-username/TinyDB.git](https://github.com/your-username/TinyDB.git)
    cd TinyDB/src
    ```
-   Compile the engine:Bashg++ main.cpp -o tinydb
-   Run the executable:Bash./tinydb
+   Compile the engine:
+   ```bash
+    g++ main.cpp -o TINYDB
+   ```
+   Run the executable:
+   ```bash
+   ./TINYDB
+   ```
   ## Usage & DemoStart the database engine and interact using the custom REPL:SQLdb >
  .open users.db -- Creates or Opens the 'users' table
  db > insert 1 apoorv a@a.com -- Inserts a record (Format: id username email)
