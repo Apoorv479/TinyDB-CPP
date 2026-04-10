@@ -26,9 +26,10 @@ A lightweight, fully functional Relational Database Engine built entirely from s
    ```
    Compile the engine:Bashg++ main.cpp -o tinydb
    Run the executable:Bash./tinydb
-   Usage & DemoStart the database engine and interact using the custom REPL:SQLdb > .open users.db -- Creates or Opens the 'users' table
-   db > insert 1 apoorv a@a.com -- Inserts a record (Format: id username email)
-   db > insert 2 rohit r@r.com -- Inserts a second record
+  ## Usage & DemoStart the database engine and interact using the custom REPL:SQLdb >
+ .open users.db -- Creates or Opens the 'users' table
+ db > insert 1 apoorv a@a.com -- Inserts a record (Format: id username email)
+ db > insert 2 rohit r@r.com -- Inserts a second record
 
 db > select -- Views all records: (1, apoorv, a@a.com)
 db > select email username -- Tests Projection: (apoorv, a@a.com)
@@ -39,7 +40,7 @@ db > .open products.db -- Safely saves 'users' and switches context
 db > .exit -- Saves current data and gracefully shuts down
 
 ## Repository StructurePlaintextTinyDB/
-
+```
 │
 ├── src/
 │ └── main.cpp # The final, feature-complete database engine
@@ -51,6 +52,6 @@ db > .exit -- Saves current data and gracefully shuts down
 │ └── phase4.1.cpp # Hardcoded single-file persistence
 │
 └── README.md
-
+```
 ## Future Enhancements
 Implementing a dynamic schema parser (CREATE TABLE) with a System Catalog header.Adding an In-Memory Hash Index (B-Tree alternative) for $O(1)$ search lookups.
