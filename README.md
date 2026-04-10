@@ -33,17 +33,26 @@ A lightweight, fully functional Relational Database Engine built entirely from s
    ./TINYDB
    ```
   ## Usage & DemoStart the database engine and interact using the custom REPL:SQLdb >
- .open users.db -- Creates or Opens the 'users' table
- db > insert 1 apoorv a@a.com -- Inserts a record (Format: id username email)
- db > insert 2 rohit r@r.com -- Inserts a second record
+ .open users.db -- Creates or Opens the 'users' table  
+ 
+ db > insert 1 apoorv a@a.com -- Inserts a record (Format: id username email)  
+ 
+ db > insert 2 rohit r@r.com -- Inserts a second record  
+ 
 
-db > select -- Views all records: (1, apoorv, a@a.com)
-db > select email username -- Tests Projection: (apoorv, a@a.com)
-db > select max -- Tests Aggregation: Max ID: 2
-db > select 1500 / 30 -- Tests Math Parser: Result: 50
+db > select -- Views all records: (1, apoorv, a@a.com)  
 
-db > .open products.db -- Safely saves 'users' and switches context
-db > .exit -- Saves current data and gracefully shuts down
+db > select email username -- Tests Projection: (apoorv, a@a.com)  
+
+db > select max -- Tests Aggregation: Max ID: 2  
+
+db > select 1500 / 30 -- Tests Math Parser: Result: 50  
+
+
+db > .open products.db -- Safely saves 'users' and switches context  
+
+db > .exit -- Saves current data and gracefully shuts down  
+
 
 ## Repository StructurePlaintextTinyDB/
 ```
