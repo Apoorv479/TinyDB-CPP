@@ -6,33 +6,40 @@
 #include <fstream>
 #include <algorithm>
 
-// ==========================================
-// 1. DATA STRUCTURES & ENUMS
-// ==========================================
-const int COLUMN_USERNAME_SIZE = 32;
-const int COLUMN_EMAIL_SIZE = 255;
-
-struct Row
+enum DataType
 {
-    int id;
-    char username[COLUMN_USERNAME_SIZE];
-    char email[COLUMN_EMAIL_SIZE];
+    TYPE_INT,
+    TYPE_TEXT
 };
 
-struct MathOperation
+struct Column
 {
-    double num1;
-    char op;
-    double num2;
+    char name[32];
+    DataType type;
+    int size;
 };
 
-//  Specific columns choosing
-struct SelectConfig
+struct Table
 {
-    bool all = true; // Default all true
-    bool id = false;
-    bool username = false;
-    bool email = false;
+    std::string name;
+    std::vector<Column> schema;
+    int row_size = 0;
+    std::vector<std::vector<char>> rows;
+
+    void calculate_row_size()
+    {
+        row_size = 0;
+        for (const auto &col : schema)
+            row_size += col.size;
+    }
+
+    int get_column_offset(int col_index)
+    {
+        int offset = 0;
+        for (int i = 0; i < col_index; i++)
+            offset += schema[i].size;
+        return offset;
+    }
 };
 
 enum PrepareResult
@@ -46,143 +53,179 @@ enum StatementType
     STATEMENT_INSERT,
     STATEMENT_SELECT,
     STATEMENT_MATH,
-    STATEMENT_AGGREGATE
-};
-enum AggregateType
-{
-    AGG_COUNT,
-    AGG_MAX,
-    AGG_MIN,
-    AGG_AVG
-};
-enum ExecuteResult
-{
-    EXECUTE_SUCCESS,
-    EXECUTE_TABLE_FULL
+    STATEMENT_AGGREGATE,
+    STATEMENT_CREATE
 };
 
 struct Statement
 {
     StatementType type;
-    Row row_to_insert;
-    MathOperation math;
-    AggregateType agg_type;
-    SelectConfig select_cols; // : Parser will tell what to print
+    std::vector<std::string> insert_values;
+    std::string agg_func;
+    std::string agg_col;
+    std::vector<int> projection_indices;
+    double n1, n2;
+    char op;
 };
 
+// --- Whitespace Trimming Function ---
+std::string trim(const std::string &str)
+{
+    size_t first = str.find_first_not_of(' ');
+    if (std::string::npos == first)
+        return "";
+    size_t last = str.find_last_not_of(' ');
+    return str.substr(first, (last - first + 1));
+}
+
+std::string safe_substr(std::string str, int pos)
+{
+    if (pos >= str.length())
+        return "";
+    return str.substr(pos);
+}
+
 // ==========================================
-// 2. DISK PERSISTENCE (File-per-Table)
+// PERSISTENCE & PARSER
 // ==========================================
-void db_open(std::vector<Row> &table, std::string filename)
+
+void db_open(Table &table, std::string filename)
 {
     std::ifstream file(filename, std::ios::binary);
     if (!file)
     {
-        std::ofstream create_empty_file(filename, std::ios::app);
-        std::cout << "Created a new database file: " << filename << std::endl;
+        table.name = filename;
+        std::cout << "New database: " << filename << std::endl;
         return;
     }
-    Row temp_row;
-    while (file.read((char *)&temp_row, sizeof(Row)))
-        table.push_back(temp_row);
+    table.name = filename;
+    table.schema.clear();
+    table.rows.clear();
+    int col_count;
+    file.read((char *)&col_count, sizeof(int));
+    for (int i = 0; i < col_count; i++)
+    {
+        Column col;
+        file.read((char *)&col, sizeof(Column));
+        table.schema.push_back(col);
+    }
+    table.calculate_row_size();
+    while (true)
+    {
+        std::vector<char> row(table.row_size);
+        if (!file.read(row.data(), table.row_size))
+            break;
+        table.rows.push_back(row);
+    }
     file.close();
-    std::cout << "Opened " << filename << " (" << table.size() << " rows loaded)" << std::endl;
+    std::cout << "Opened " << filename << " (" << table.rows.size() << " rows loaded)" << std::endl;
 }
 
-void db_close(const std::vector<Row> &table, std::string filename)
+void db_close(Table &table)
 {
-    std::ofstream file(filename, std::ios::binary);
-    for (const auto &row : table)
-        file.write((const char *)&row, sizeof(Row));
+    if (table.name == "" || table.schema.empty())
+        return;
+    std::ofstream file(table.name, std::ios::binary);
+    int col_count = table.schema.size();
+    file.write((char *)&col_count, sizeof(int));
+    for (auto &col : table.schema)
+        file.write((char *)&col, sizeof(Column));
+    for (auto &row : table.rows)
+        file.write(row.data(), table.row_size);
     file.close();
-    std::cout << "Saved data safely to " << filename << std::endl;
 }
 
-// ==========================================
-// 3. THE PARSER
-// ==========================================
-PrepareResult prepare_statement(std::string input, Statement &statement)
+PrepareResult prepare_statement(std::string input, Statement &statement, Table &table)
 {
+    if (input.substr(0, 12) == "create table")
+    {
+        statement.type = STATEMENT_CREATE;
+        std::stringstream ss(safe_substr(input, 13));
+        std::string col_info;
+        table.schema.clear();
+        while (std::getline(ss, col_info, ','))
+        {
+            std::stringstream css(col_info);
+            std::string name, type;
+            css >> name >> type;
+            Column c;
+            strncpy(c.name, name.c_str(), 31);
+            if (type == "int")
+            {
+                c.type = TYPE_INT;
+                c.size = 4;
+            }
+            else
+            {
+                c.type = TYPE_TEXT;
+                c.size = 255;
+            }
+            table.schema.push_back(c);
+        }
+        table.calculate_row_size();
+        return PREPARE_SUCCESS;
+    }
+
     if (input.substr(0, 6) == "insert")
     {
         statement.type = STATEMENT_INSERT;
-        std::stringstream ss(input);
-        std::string cmd, user, email;
-        int id;
-
-        ss >> cmd >> id >> user >> email;
-        if (ss.fail())
+        std::stringstream ss(safe_substr(input, 7));
+        std::string val;
+        while (ss >> val)
+            statement.insert_values.push_back(val);
+        if (statement.insert_values.size() != table.schema.size())
             return PREPARE_SYNTAX_ERROR;
-
-        statement.row_to_insert.id = id;
-        strncpy(statement.row_to_insert.username, user.c_str(), COLUMN_USERNAME_SIZE - 1);
-        statement.row_to_insert.username[COLUMN_USERNAME_SIZE - 1] = '\0';
-        strncpy(statement.row_to_insert.email, email.c_str(), COLUMN_EMAIL_SIZE - 1);
-        statement.row_to_insert.email[COLUMN_EMAIL_SIZE - 1] = '\0';
         return PREPARE_SUCCESS;
     }
 
     if (input.substr(0, 6) == "select")
     {
-        // Aggregates Check
-        if (input == "select count")
+        std::string after_select = trim(safe_substr(input, 7));
+
+        if (after_select == "" || after_select == "*")
         {
-            statement.type = STATEMENT_AGGREGATE;
-            statement.agg_type = AGG_COUNT;
-            return PREPARE_SUCCESS;
-        }
-        if (input == "select max")
-        {
-            statement.type = STATEMENT_AGGREGATE;
-            statement.agg_type = AGG_MAX;
-            return PREPARE_SUCCESS;
-        }
-        if (input == "select min")
-        {
-            statement.type = STATEMENT_AGGREGATE;
-            statement.agg_type = AGG_MIN;
-            return PREPARE_SUCCESS;
-        }
-        if (input == "select avg")
-        {
-            statement.type = STATEMENT_AGGREGATE;
-            statement.agg_type = AGG_AVG;
+            statement.type = STATEMENT_SELECT;
+            for (int i = 0; i < table.schema.size(); i++)
+                statement.projection_indices.push_back(i);
             return PREPARE_SUCCESS;
         }
 
-        // Math Operation Check
-        if (input.length() > 7 && (input.find('+') != std::string::npos || input.find('-') != std::string::npos || input.find('*') != std::string::npos || input.find('/') != std::string::npos))
+        if (input.find_first_of("+-*/") != std::string::npos)
         {
             statement.type = STATEMENT_MATH;
-            std::stringstream ss(input.substr(7));
-            ss >> statement.math.num1 >> statement.math.op >> statement.math.num2;
-            if (ss.fail())
-                return PREPARE_SYNTAX_ERROR;
+            std::stringstream mss(safe_substr(input, 7));
+            mss >> statement.n1 >> statement.op >> statement.n2;
             return PREPARE_SUCCESS;
         }
 
-        // NAYA: Column Projection Logic
+        std::stringstream ss(after_select);
+        std::string first;
+        ss >> first;
+        if (first == "count" || first == "max" || first == "min" || first == "avg")
+        {
+            statement.type = STATEMENT_AGGREGATE;
+            statement.agg_func = first;
+            ss >> statement.agg_col;
+            return PREPARE_SUCCESS;
+        }
+
         statement.type = STATEMENT_SELECT;
-        if (input == "select" || input == "select *")
-        {
-            statement.select_cols.all = true; // all print
-            return PREPARE_SUCCESS;
-        }
-
-        //  specific columns asked user (e.g., "select id email")
-        statement.select_cols.all = false; // All closed
-        std::stringstream ss(input.substr(6));
+        std::stringstream pss(after_select);
         std::string col;
-        while (ss >> col)
+        while (pss >> col)
         {
-            if (col == "id")
-                statement.select_cols.id = true;
-            else if (col == "username")
-                statement.select_cols.username = true;
-            else if (col == "email")
-                statement.select_cols.email = true;
-            else
-                return PREPARE_SYNTAX_ERROR; // column asked which doesn't exist
+            bool found = false;
+            for (int i = 0; i < table.schema.size(); i++)
+            {
+                if (table.schema[i].name == col)
+                {
+                    statement.projection_indices.push_back(i);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                return PREPARE_SYNTAX_ERROR;
         }
         return PREPARE_SUCCESS;
     }
@@ -190,191 +233,170 @@ PrepareResult prepare_statement(std::string input, Statement &statement)
 }
 
 // ==========================================
-// 4. THE EXECUTORS
+// EXECUTORS
 // ==========================================
-void execute_aggregate(Statement &statement, std::vector<Row> &table)
-{ /* Wahi purana logic */
-    if (table.empty() && statement.agg_type != AGG_COUNT)
-    {
-        std::cout << "Error: Table is empty." << std::endl;
-        return;
-    }
-    switch (statement.agg_type)
-    {
-    case AGG_COUNT:
-        std::cout << "Count: " << table.size() << std::endl;
-        break;
-    case AGG_MAX:
-    {
-        int m = table[0].id;
-        for (const auto &r : table)
-            if (r.id > m)
-                m = r.id;
-        std::cout << "Max ID: " << m << std::endl;
-        break;
-    }
-    case AGG_MIN:
-    {
-        int m = table[0].id;
-        for (const auto &r : table)
-            if (r.id < m)
-                m = r.id;
-        std::cout << "Min ID: " << m << std::endl;
-        break;
-    }
-    case AGG_AVG:
-    {
-        double s = 0;
-        for (const auto &r : table)
-            s += r.id;
-        std::cout << "Average ID: " << s / table.size() << std::endl;
-        break;
-    }
-    }
-}
 
-//  Executor which  checks and then prints
-ExecuteResult execute_select(Statement &statement, std::vector<Row> &table)
+void execute_statement(Statement &statement, Table &table)
 {
-    if (table.empty())
+    if (statement.type == STATEMENT_CREATE)
     {
-        std::cout << "Table is empty." << std::endl;
-        return EXECUTE_SUCCESS;
+        std::cout << "Schema defined (" << table.schema.size() << " columns)." << std::endl;
     }
-
-    for (const auto &r : table)
+    else if (statement.type == STATEMENT_INSERT)
     {
-        std::cout << "(";
-        bool first = true;
-
-        if (statement.select_cols.all || statement.select_cols.id)
+        std::vector<char> row(table.row_size);
+        int offset = 0;
+        for (int i = 0; i < table.schema.size(); i++)
         {
-            std::cout << r.id;
-            first = false;
-        }
-        if (statement.select_cols.all || statement.select_cols.username)
-        {
-            if (!first)
-                std::cout << ", ";
-            std::cout << r.username;
-            first = false;
-        }
-        if (statement.select_cols.all || statement.select_cols.email)
-        {
-            if (!first)
-                std::cout << ", ";
-            std::cout << r.email;
-        }
-        std::cout << ")" << std::endl;
-    }
-    return EXECUTE_SUCCESS;
-}
-
-ExecuteResult execute_statement(Statement &statement, std::vector<Row> &table)
-{
-    if (statement.type == STATEMENT_INSERT)
-    {
-        table.push_back(statement.row_to_insert);
-        std::cout << "Executed. Row added!" << std::endl;
-    }
-    else if (statement.type == STATEMENT_SELECT)
-    {
-        execute_select(statement, table); // Updated executor
-    }
-    else if (statement.type == STATEMENT_MATH)
-    {
-        double res = 0;
-        if (statement.math.op == '+')
-            res = statement.math.num1 + statement.math.num2;
-        else if (statement.math.op == '-')
-            res = statement.math.num1 - statement.math.num2;
-        else if (statement.math.op == '*')
-            res = statement.math.num1 * statement.math.num2;
-        else if (statement.math.op == '/')
-        {
-            if (statement.math.num2 == 0)
+            if (table.schema[i].type == TYPE_INT)
             {
-                std::cout << "Error: Divide by zero!" << std::endl;
-                return EXECUTE_SUCCESS;
-            }
-            res = statement.math.num1 / statement.math.num2;
-        }
-        std::cout << "Result: " << res << std::endl;
-    }
-    else if (statement.type == STATEMENT_AGGREGATE)
-    {
-        execute_aggregate(statement, table);
-    }
-    return EXECUTE_SUCCESS;
-}
-
-// ==========================================
-// 5. MAIN LOOP
-// ==========================================
-int main()
-{
-    std::string input_buffer;
-    std::vector<Row> table;
-    std::string current_db = "";
-
-    std::cout << "--- TinyDB (Projection + Multi-Table + Math) ---" << std::endl;
-    std::cout << "Type '.open <filename>' to start." << std::endl;
-
-    while (true)
-    {
-        std::cout << "db > ";
-        if (!std::getline(std::cin, input_buffer))
-            break;
-
-        if (input_buffer[0] == '.')
-        {
-            if (input_buffer.substr(0, 5) == ".open")
-            {
-                if (current_db != "")
-                {
-                    db_close(table, current_db);
-                }
-                if (input_buffer.length() > 6)
-                {
-                    current_db = input_buffer.substr(6);
-                    table.clear();
-                    db_open(table, current_db);
-                }
-                else
-                {
-                    std::cout << "Error: Provide a filename" << std::endl;
-                }
-                continue;
-            }
-            else if (input_buffer == ".exit")
-            {
-                if (current_db != "")
-                {
-                    db_close(table, current_db);
-                }
-                break;
+                int val = std::stoi(statement.insert_values[i]);
+                memcpy(row.data() + offset, &val, 4);
             }
             else
             {
-                std::cout << "Unrecognized meta command." << std::endl;
-                continue;
+                char text[255] = {0};
+                strncpy(text, statement.insert_values[i].c_str(), 254);
+                memcpy(row.data() + offset, text, 255);
+            }
+            offset += table.schema[i].size;
+        }
+        table.rows.push_back(row);
+        std::cout << "Row added." << std::endl;
+    }
+    else if (statement.type == STATEMENT_SELECT)
+    {
+        if (table.rows.empty())
+        {
+            std::cout << "Table is empty." << std::endl;
+            return;
+        }
+        for (auto &row : table.rows)
+        {
+            std::cout << "(";
+            for (int i = 0; i < statement.projection_indices.size(); i++)
+            {
+                int idx = statement.projection_indices[i];
+                int offset = table.get_column_offset(idx);
+                if (table.schema[idx].type == TYPE_INT)
+                {
+                    int val;
+                    memcpy(&val, row.data() + offset, 4);
+                    std::cout << val;
+                }
+                else
+                {
+                    char text[255];
+                    memcpy(text, row.data() + offset, 255);
+                    std::cout << text;
+                }
+                if (i < statement.projection_indices.size() - 1)
+                    std::cout << ", ";
+            }
+            std::cout << ")" << std::endl;
+        }
+    }
+    else if (statement.type == STATEMENT_MATH)
+    {
+        double r = 0;
+        if (statement.op == '+')
+            r = statement.n1 + statement.n2;
+        else if (statement.op == '-')
+            r = statement.n1 - statement.n2;
+        else if (statement.op == '*')
+            r = statement.n1 * statement.n2;
+        else if (statement.op == '/')
+            r = (statement.n2 != 0) ? statement.n1 / statement.n2 : 0;
+        std::cout << "Math Result: " << r << std::endl;
+    }
+    else if (statement.type == STATEMENT_AGGREGATE)
+    {
+        if (table.rows.empty())
+        {
+            std::cout << "Empty table." << std::endl;
+            return;
+        }
+        if (statement.agg_func == "count")
+        {
+            std::cout << "Count: " << table.rows.size() << std::endl;
+            return;
+        }
+        int col_idx = -1;
+        for (int i = 0; i < table.schema.size(); i++)
+            if (table.schema[i].name == statement.agg_col)
+                col_idx = i;
+        if (col_idx == -1)
+        {
+            std::cout << "Error: Column not found." << std::endl;
+            return;
+        }
+
+        int offset = table.get_column_offset(col_idx);
+        double res = 0;
+        bool first = true;
+        for (auto &r : table.rows)
+        {
+            int val;
+            memcpy(&val, r.data() + offset, 4);
+            if (first)
+            {
+                res = val;
+                first = false;
+            }
+            else
+            {
+                if (statement.agg_func == "max")
+                    res = std::max((double)val, res);
+                if (statement.agg_func == "min")
+                    res = std::min((double)val, res);
+                if (statement.agg_func == "avg")
+                    res += val;
             }
         }
+        if (statement.agg_func == "avg")
+            res /= table.rows.size();
+        std::cout << statement.agg_func << ": " << res << std::endl;
+    }
+}
 
-        Statement statement;
-        if (prepare_statement(input_buffer, statement) != PREPARE_SUCCESS)
+int main()
+{
+    std::string input;
+    Table table;
+    std::cout << "--- TinyDB v2.2 (Ultra-Robust Edition) ---" << std::endl;
+    while (true)
+    {
+        std::cout << "db > ";
+        if (!std::getline(std::cin, input))
+            break;
+
+        input = trim(input); // <--- Sabse zaroori badlav
+        if (input == "")
+            continue;
+        if (input == ".exit")
         {
-            std::cout << "Syntax Error. Only 'id', 'username', and 'email' are valid columns." << std::endl;
+            if (table.name != "")
+                db_close(table);
+            break;
+        }
+
+        if (input.substr(0, 5) == ".open")
+        {
+            if (table.name != "")
+                db_close(table);
+            db_open(table, trim(input.substr(6)));
             continue;
         }
 
-        if (current_db == "" && statement.type != STATEMENT_MATH)
+        Statement stmt;
+        if (prepare_statement(input, stmt, table) == PREPARE_SUCCESS)
         {
-            std::cout << "Error: No database opened. Use '.open <filename>' first." << std::endl;
-            continue;
+            execute_statement(stmt, table);
         }
-
-        execute_statement(statement, table);
+        else
+        {
+            std::cout << "Error: Command invalid or schema mismatch." << std::endl;
+        }
     }
     return 0;
 }

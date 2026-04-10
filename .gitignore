@@ -1,0 +1,12 @@
+# Compiled Binaries
+*.exe
+*.o
+*.out
+TINYDB
+
+# Database Files 
+*.db
+
+# IDE Folders
+.vscode/
+.idea/
