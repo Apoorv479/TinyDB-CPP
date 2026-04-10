@@ -52,4 +52,5 @@ db > .exit -- Saves current data and gracefully shuts down
 │
 └── README.md
 
-## Future EnhancementsImplementing a dynamic schema parser (CREATE TABLE) with a System Catalog header.Adding an In-Memory Hash Index (B-Tree alternative) for $O(1)$ search lookups.
+## Future Enhancements
+Implementing a dynamic schema parser (CREATE TABLE) with a System Catalog header.Adding an In-Memory Hash Index (B-Tree alternative) for $O(1)$ search lookups.
