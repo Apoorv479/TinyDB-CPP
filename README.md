@@ -33,7 +33,10 @@ A lightweight, fully functional Relational Database Engine built entirely from s
    ./TINYDB
    ```
   ## Usage & DemoStart the database engine and interact using the custom REPL:SQLdb >
- .open users.db -- Creates or Opens the 'users' table  
+ .open users.db -- Creates or Opens the 'users' table   
+ 
+ db > create table id int, name text, score int -- create custom schema  
+ 
  
  db > insert 1 apoorv a@a.com -- Inserts a record (Format: id username email)  
  
@@ -69,4 +72,4 @@ db > .exit -- Saves current data and gracefully shuts down
 └── README.md
 ```
 ## Future Enhancements
-Implementing a dynamic schema parser (CREATE TABLE) with a System Catalog header.Adding an In-Memory Hash Index (B-Tree alternative) for $O(1)$ search lookups.
+Adding an In-Memory Hash Index (B-Tree alternative) for $O(1)$ search lookups.
