@@ -57,7 +57,7 @@ db > .open products.db -- Safely saves 'users' and switches context
 db > .exit -- Saves current data and gracefully shuts down  
 
 
-## Repository StructurePlaintextTinyDB/
+## Repository Structure/
 ```
 │
 ├── src/
