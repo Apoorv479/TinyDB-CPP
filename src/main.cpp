@@ -68,7 +68,7 @@ struct Statement
     char op;
 };
 
-// --- Whitespace Trimming Function ---
+//  Whitespace Trimming Function
 std::string trim(const std::string &str)
 {
     size_t first = str.find_first_not_of(' ');
@@ -85,9 +85,7 @@ std::string safe_substr(std::string str, int pos)
     return str.substr(pos);
 }
 
-// ==========================================
 // PERSISTENCE & PARSER
-// ==========================================
 
 void db_open(Table &table, std::string filename)
 {
@@ -232,9 +230,7 @@ PrepareResult prepare_statement(std::string input, Statement &statement, Table &
     return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-// ==========================================
 // EXECUTORS
-// ==========================================
 
 void execute_statement(Statement &statement, Table &table)
 {
@@ -370,7 +366,7 @@ int main()
         if (!std::getline(std::cin, input))
             break;
 
-        input = trim(input); // <--- Sabse zaroori badlav
+        input = trim(input);
         if (input == "")
             continue;
         if (input == ".exit")
