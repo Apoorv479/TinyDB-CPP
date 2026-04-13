@@ -359,7 +359,7 @@ int main()
 {
     std::string input;
     Table table;
-    std::cout << "--- TinyDB v2.2 (Ultra-Robust Edition) ---" << std::endl;
+    std::cout << " TinyDB  " << std::endl;
     while (true)
     {
         std::cout << "db > ";
